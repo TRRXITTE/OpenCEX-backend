@@ -1,8 +1,12 @@
 from django.db.models import Q, QuerySet
 
-from core.consts.currencies import BEP20_CURRENCIES
-from core.consts.currencies import ERC20_CURRENCIES
-from core.consts.currencies import TRC20_CURRENCIES
+from core.consts.currencies import (
+    BEP20_CURRENCIES,
+    ERC20_CURRENCIES,
+    TRC20_CURRENCIES,
+    ERC20_MATIC_CURRENCIES,
+    ERC20_ETX_CURRENCIES,  # ✅ NEW: ETX token support
+)
 from core.models.inouts.withdrawal import WithdrawalRequest, CREATED, PENDING
 
 
@@ -10,7 +14,13 @@ def get_withdrawal_requests_to_process(currencies: list, blockchain_currency='')
     tokens = []
     coins = []
     for cur in currencies:
-        if cur in ERC20_CURRENCIES or cur in TRC20_CURRENCIES or cur in BEP20_CURRENCIES:
+        if (
+            cur in ERC20_CURRENCIES or
+            cur in TRC20_CURRENCIES or
+            cur in BEP20_CURRENCIES or
+            cur in ERC20_MATIC_CURRENCIES or
+            cur in ERC20_ETX_CURRENCIES  # ✅ ETX token check
+        ):
             tokens.append(cur)
         else:
             coins.append(cur)
@@ -37,12 +47,18 @@ def get_withdrawal_requests_by_status(
     blockchain_currency: str = '',
     status: int = PENDING,
 ) -> QuerySet:
-    # TODO REFACTOR
     common_currencies = []
     not_common_currencies = []
     common_qs = None
+
     for cur in currencies:
-        if cur in ERC20_CURRENCIES or cur in TRC20_CURRENCIES or cur in BEP20_CURRENCIES:
+        if (
+            cur in ERC20_CURRENCIES or
+            cur in TRC20_CURRENCIES or
+            cur in BEP20_CURRENCIES or
+            cur in ERC20_MATIC_CURRENCIES or
+            cur in ERC20_ETX_CURRENCIES  # ✅ ETX token check
+        ):
             common_currencies.append(cur)
         else:
             not_common_currencies.append(cur)

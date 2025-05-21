@@ -41,7 +41,7 @@ def register_coin(currency_id: int, currency_code: str, *,
         CURRENCIES_LIST.append((currency_id, currency_code,))
         CRYPTO_ADDRESS_VALIDATORS.update({currency: address_validation_fn})
         CRYPTO_WALLET_CREATORS.update({currency: wallet_creation_fn})
-        CRYPTO_WALLET_ACCOUNT_CREATORS.update({currency:  partial(generate_new_wallet_account, currency)})
+        CRYPTO_WALLET_ACCOUNT_CREATORS.update({currency: partial(generate_new_wallet_account, currency)})
         CRYPTO_COINS_PARAMS.update({
             currency: CoinParams(
                 latest_block_fn=latest_block_fn,
@@ -54,8 +54,6 @@ def register_coin(currency_id: int, currency_code: str, *,
 
 
 def register_token(currency_id, currency_code, blockchains: Optional[Dict[str, TokenParams]] = None):
-    # if not isinstance(blockchains, list) or not blockchains:
-    #     raise Exception('blockchains must be type of "list" and cannot be empty')
 
     currency = Currency(currency_id, currency_code, is_token=True)
 
@@ -111,6 +109,33 @@ def register_token(currency_id, currency_code, blockchains: Optional[Dict[str, T
             address_validators['MATIC'] = is_valid_matic_address
 
             log.debug(f'Token {currency} registered as ERC20 Polygon')
+
+        # -- ADD support for your new ETX blockchain and ETX20 tokens here --
+
+        if 'TRRXITTE' in blockchains:
+            # Example imports — you should create these utils & wallets modules
+            from cryptocoins.coins.etx.wallet import etx_wallet_creation_wrapper, is_valid_etx_address
+
+            # Add ETX as standalone coin wallet creator & validator for native ETX
+            # For tokens on TRRXITTE, register here as well
+            # For example, ETX20 tokens handled like ERC20 but on TRRXITTE chain
+            # You'll need to decide how you want to organize this
+
+            # We register native ETX coin wallet creators and validators as well:
+            CRYPTO_WALLET_CREATORS.update({Currency(currency_id, 'ETX'): etx_wallet_creation_wrapper})
+            CRYPTO_ADDRESS_VALIDATORS.update({Currency(currency_id, 'ETX'): is_valid_etx_address})
+
+            log.debug(f'Currency ETX registered on TRRXITTE')
+
+            # Register tokens on TRRXITTE blockchain similarly:
+            # If this token is ETX20 token, register in a mapping, for example:
+            # TRRXITTE_TOKENS_CURRENCIES.update({currency: blockchains['TRRXITTE']})
+
+            # Set wallet creator & validator for token on TRRXITTE chain
+            wallet_creators['TRRXITTE'] = etx_wallet_creation_wrapper  # or token wallet creator wrapper if different
+            address_validators['TRRXITTE'] = is_valid_etx_address  # or token address validator if different
+
+            log.debug(f'Token {currency} registered on TRRXITTE Ethereum')
 
         CRYPTO_WALLET_CREATORS[currency] = wallet_creators
         CRYPTO_ADDRESS_VALIDATORS[currency] = address_validators

@@ -8,6 +8,9 @@ from cryptocoins.monitoring.monitors.eth_monitor import EthMonitor
 from cryptocoins.monitoring.monitors.trc20_monitor import UsdtTrxMonitor
 from cryptocoins.monitoring.monitors.trx_monitor import TrxMonitor
 
+# Import your ETX20 monitors here
+from cryptocoins.monitoring.monitors.etx20_monitor import EtxMonitor, UsdtEtxMonitor
+
 log = logging.getLogger(__name__)
 
 MONITORS = {
@@ -18,6 +21,8 @@ MONITORS = {
     'USDTTRX': UsdtTrxMonitor,
     'USDTETH': UsdtEthMonitor,
     'USDTBNB': UsdtBnbMonitor,
+    'ETX': EtxMonitor,            # ETX main monitor
+    'USDTETX': UsdtEtxMonitor,    # USDT-ETX pair monitor
 }
 
 
@@ -26,7 +31,7 @@ class MonitoringProcessor:
 
     @classmethod
     def process(cls, currency):
-        Monitor = MONITORS.get(currency)
+        Monitor = cls.monitors.get(currency)
         if not Monitor:
             raise Exception(f'Monitor not found for {currency}')
 

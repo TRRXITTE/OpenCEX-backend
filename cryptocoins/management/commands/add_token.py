@@ -6,8 +6,10 @@ from django.core.management.base import BaseCommand
 from django.db.models import Max
 from web3 import Web3
 
-from core.consts.currencies import BEP20_CURRENCIES, ERC20_CURRENCIES, TRC20_CURRENCIES, CURRENCIES_LIST, \
-    CRYPTO_ADDRESS_VALIDATORS, ERC20_MATIC_CURRENCIES
+from core.consts.currencies import (
+    BEP20_CURRENCIES, ERC20_CURRENCIES, TRC20_CURRENCIES, CURRENCIES_LIST,
+    CRYPTO_ADDRESS_VALIDATORS, ERC20_MATIC_CURRENCIES, ETX20_CURRENCIES
+)
 from core.currency import Currency, CurrencyNotFound
 from core.models import PairSettings, FeesAndLimits, WithdrawalFee
 from core.models.facade import CoinInfo
@@ -22,12 +24,15 @@ TOKENS_BLOCKCHAINS_MAP = {
     'BNB': BEP20_CURRENCIES,
     'TRX': TRC20_CURRENCIES,
     'MATIC': ERC20_MATIC_CURRENCIES,
+    'ETX': ETX20_CURRENCIES,
 }
+
 EXPLORERS_MAP = {
     'ETH': 'https://etherscan.io/',
     'BNB': 'https://bscscan.com/',
     'TRX': 'https://tronscan.org/',
     'MATIC': 'https://polygonscan.com/',
+    'ETX': 'https://explorer.etxchain.com/',
 }
 
 HEADER = """ 
@@ -58,7 +63,7 @@ STEP1_HEADER = """
 
 Token symbol* - ticker symbol of the token (i.e. USDT)
 Token blockchain symbol* - symbol of token's blockhain. 
-    Supported only ETH(Ethereum), BNB(BSC), TRX(Tron)
+    Supported only ETH(Ethereum), BNB(BSC), TRX(Tron), MATIC (Polygon), ETX (ETX Chain)
 Token contract address* - token's contract address in blockchain.
     Enter address with upper case symbols
     (i.e. 0xdAC17F958D2ee523a2206206994597C13D831ec7)
@@ -66,6 +71,7 @@ Token contract decimals* - number of decimals in contract
 
 -----------------------------------------------------------
 """
+
 STEP2_HEADER = """
 ===========================================================
      STEP 2 OF 3. TOKEN PAIR INFO
@@ -78,6 +84,7 @@ Token custom price* - asked if there is no external
 
 -----------------------------------------------------------
 """
+
 STEP3_HEADER = """
 ===========================================================
      STEP 3 OF 3. TOKEN INFO
@@ -95,6 +102,7 @@ Official site link: - link to coin's official page
 
 -----------------------------------------------------------
 """
+
 SPLITTER = """-----------------------------------------------------------"""
 
 
@@ -123,7 +131,7 @@ class Command(BaseCommand):
             # common token data
             token_symbol = prompt('Token symbol* (i.e. USDT)').upper()
             blockchain_symbol = prompt('Token blockchain symbol* (i.e. ETH)', choices=[
-                'ETH', 'BNB', 'TRX', 'MATIC',
+                'ETH', 'BNB', 'TRX', 'MATIC', 'ETX',
             ])
 
             if is_token_exists(token_symbol, blockchain_symbol):
@@ -303,123 +311,94 @@ def get_available_currency_id():
 
 
 def get_available_pair_id():
-    pairs = Pair.objects.all()
-    current_max_id = pairs.aggregate(Max('id'))['id__max']
-    if current_max_id is None:
-        current_max_id = 0
-    return max(current_max_id, 1000) + 1
+    return Pair.objects.aggregate(Max('id'))['id__max'] + 1
 
 
-def is_token_exists(symbol, blockchain_symbol):
-    blockchain_currencies = TOKENS_BLOCKCHAINS_MAP[blockchain_symbol]
-    symbols = [c.code for c in blockchain_currencies]
-    return symbol in symbols
+def is_token_exists(token_symbol, blockchain_symbol):
+    try:
+        Currency.get(token_symbol)
+        return blockchain_symbol in TOKENS_BLOCKCHAINS_MAP and token_symbol in TOKENS_BLOCKCHAINS_MAP[blockchain_symbol]
+    except CurrencyNotFound:
+        return False
 
 
-def prompt(text, arg_type=str, choices=None, default=None):
-    if not choices:
-        choices = []
+def is_entry_exists(model, filters):
+    return model.objects.filter(**filters).exists()
 
-    res = None
 
-    while res is None:
-        res = input(text + ': ')
-        # filtering out wrong chars
-        res = ''.join(c for c in res if c in printable)
-        if not res:
-            if default is not None:
-                return default
+def create_withdrawal_fee(token_symbol, blockchain_symbol):
+    if is_entry_exists(WithdrawalFee, {'currency': token_symbol, 'blockchain_currency': blockchain_symbol}):
+        return
+    WithdrawalFee.objects.create(currency=token_symbol, blockchain_currency=blockchain_symbol)
 
-            if arg_type is str:
-                print('[!] Param can not be blank')
-                res = None
+
+def prompt(prompt_text, arg_type=str, default=None, choices=None):
+    while True:
+        if choices:
+            prompt_str = f'{prompt_text} {choices} '
+        else:
+            prompt_str = f'{prompt_text} '
+
+        if default is not None:
+            prompt_str += f'(default: {default}) '
+
+        response = input(prompt_str)
+        if not response and default is not None:
+            return default
+        if arg_type == int:
+            try:
+                return int(response)
+            except ValueError:
+                print('Please enter a valid integer')
+        elif arg_type == float:
+            try:
+                return float(response)
+            except ValueError:
+                print('Please enter a valid float number')
+        else:
+            if choices and response not in choices:
+                print(f'Please enter one of the following choices: {choices}')
                 continue
-        try:
-            res = arg_type(res)
-        except:
-            print(f'[!] Incorrect param type. It should be {arg_type}')
-            res = None
+            if not response.strip():
+                print('This field is required')
+                continue
+            return response.strip()
+
+
+def prompt_yes_no(prompt_text):
+    while True:
+        response = input(f'{prompt_text} (y/n): ').lower()
+        if response in ['y', 'yes']:
+            return True
+        elif response in ['n', 'no']:
+            return False
+        else:
+            print('Please enter y or n')
+
+
+def prompt_contract(blockchain_symbol):
+    while True:
+        contract = input('Token contract address* (i.e. 0xdAC17F958D2ee523a2206206994597C13D831ec7): ').strip()
+        if not contract:
+            print('Contract address is required')
             continue
-
-        if choices and res not in choices:
-            print(f'[!] Incorrect value. Value must be in {choices}')
-            res = None
-            continue
-    return res
-
-
-def check_address(currency, addr, blockchain_currency):
-    currency = Currency.get(currency)
-    validator = CRYPTO_ADDRESS_VALIDATORS[currency]
-    if isinstance(validator, dict):
-        blockchain_currency = Currency.get(blockchain_currency)
-        return validator[blockchain_currency](addr)
-    return validator(addr)
-
-
-def prompt_contract(blockchain):
-    while 1:
-        contract = prompt('Token contract address* (i.e. 0xdAC17F958D2ee523a2206206994597C13D831ec7)')
-        if not check_address(blockchain, contract, blockchain):
-            print('[!] Incorrect contract address')
-            continue
-        if blockchain in ['ETH', 'BNB', 'MATIC']:
-            contract = Web3.to_checksum_address(contract)
-        exists_contracts = [v.contract_address for k, v in TOKENS_BLOCKCHAINS_MAP[blockchain].items()]
-        if contract in exists_contracts:
-            print('[!] Contract with this address already exists')
+        validator = CRYPTO_ADDRESS_VALIDATORS.get(blockchain_symbol)
+        if validator and not validator(contract):
+            print('Invalid contract address format')
             continue
         return contract
 
 
 def prompt_precisions(token_symbol):
-    while 1:
-        precisions = prompt(
-            f'Precisions for pair {token_symbol}-USDT* (i.e. 10,1,0.1,0.01)')
-        precisions = precisions.split(',')
-        precisions = [p.strip() for p in precisions if p.strip()]
-
-        precisions_alright = 1
-        for p in precisions:
-            if not p:
-                continue
-            if not is_float(p):
-                precisions_alright = 0
-                print(f'[!] Incorrect value element: {p}')
-                break
-
-        if precisions_alright:
+    while True:
+        precisions_str = input(f'Precisions for pair {token_symbol}-USDT* (comma separated, e.g. 10,1,0.1,0.01): ').strip()
+        if not precisions_str:
+            print('This field is required')
+            continue
+        try:
+            precisions = [float(p.strip()) for p in precisions_str.split(',')]
+            if not precisions:
+                raise ValueError
             return precisions
-
-
-def is_entry_exists(model, fields):
-    try:
-        res = model.objects.filter(**fields).exists()
-    except CurrencyNotFound:
-        return False
-    return res
-
-
-def is_float(s):
-    return s.replace('.', '', 1).isdigit()
-
-
-def prompt_yes_no(text) -> bool:
-    while 1:
-        ans = input(text + ' (y or n)').lower()
-        if ans == 'y':
-            return True
-        elif ans == 'n':
-            return False
-
-
-def create_withdrawal_fee(token_symbol, blockchain_symbol):
-    # ********* WithdrawalFee **************
-    if is_entry_exists(WithdrawalFee, {'currency': token_symbol, 'blockchain_currency': blockchain_symbol}):
-        print(f'[*] WithdrawalFee already exists')
-    else:
-        WithdrawalFee.objects.create(
-            currency=token_symbol,
-            blockchain_currency=blockchain_symbol,
-            address_fee=1.00000000
-        )
+        except ValueError:
+            print('Please enter valid numeric values separated by commas')
